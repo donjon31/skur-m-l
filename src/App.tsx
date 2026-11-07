@@ -10,6 +10,7 @@ const corners: Corner[] = ['A', 'B', 'C', 'D'];
 const da = new Intl.NumberFormat('da-DK', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 const money = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', maximumFractionDigits: 0 });
 const format = (value: number) => da.format(value);
+const inputFormat = new Intl.NumberFormat('da-DK', { useGrouping: false, maximumFractionDigits: 3 });
 const numberValue = parseDanishNumber;
 const uid = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 
@@ -17,13 +18,40 @@ function Badge({ kind }: { kind: 'MÅLT' | 'BEREGNET' | 'ANTAGET' }) {
   return <span className={`badge ${kind.toLowerCase()}`}>{kind}</span>;
 }
 
-function NumberInput({ label, value, onChange, unit = 'cm', optional = false }: { label: string; value: number | null; onChange: (value: number | null) => void; unit?: string; optional?: boolean }) {
+export function NumberInput({ label, value, onChange, unit = 'cm', optional = false }: { label: string; value: number | null; onChange: (value: number | null) => void; unit?: string; optional?: boolean }) {
+  const [draft, setDraft] = useState(value === null ? '' : inputFormat.format(value));
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!editing) setDraft(value === null ? '' : inputFormat.format(value));
+  }, [value, editing]);
+
+  const commit = (raw: string) => {
+    const normalized = raw.replace('.', ',');
+    if (!/^\d*(,\d*)?$/.test(normalized)) return;
+    setDraft(normalized);
+    if (!normalized) {
+      if (optional) onChange(null);
+      return;
+    }
+    if (normalized.endsWith(',')) return;
+    const next = numberValue(normalized);
+    if (Number.isFinite(next) && next >= 0) onChange(next);
+  };
+
   return <label className="field">
     <span>{label} {optional && <small>(valgfrit)</small>}</span>
-    <span className="input-unit"><input inputMode="decimal" min="0" step="0.1" value={value ?? ''} placeholder={optional ? 'Ikke målt' : '0'} onChange={(event) => {
-      if (!event.target.value) return onChange(optional ? null : 0);
-      const next = numberValue(event.target.value);
-      if (Number.isFinite(next) && next >= 0) onChange(next);
+    <span className="input-unit"><input inputMode="decimal" value={draft} placeholder={optional ? 'Ikke målt' : '0'} onFocus={() => setEditing(true)} onChange={(event) => commit(event.target.value)} onBlur={() => {
+      setEditing(false);
+      if (!draft) {
+        onChange(optional ? null : 0);
+        setDraft(optional ? '' : '0');
+        return;
+      }
+      const next = numberValue(draft);
+      if (Number.isFinite(next) && next >= 0) {
+        onChange(next);
+        setDraft(inputFormat.format(next));
+      }
     }} /><b>{unit}</b></span>
   </label>;
 }
